@@ -24,7 +24,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> initDialogFlowtter() async {
     DialogAuthCredentials credentials =
-        await DialogAuthCredentials.fromFile('assets/auth_hajjflow.json');
+        await DialogAuthCredentials.fromFile('here your path json');
     DialogFlowtter instance = DialogFlowtter(credentials: credentials);
     setState(() {
       dialogFlowtter = instance;
