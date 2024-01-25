@@ -2,6 +2,9 @@ import 'package:chatze/widgets/chat.dart';
 import 'package:dialog_flowtter/dialog_flowtter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:speech_to_text/speech_recognition_result.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -10,24 +13,92 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
   late DialogFlowtter dialogFlowtter;
   final TextEditingController _controller = TextEditingController();
   List<Map<String, dynamic>> messages = [];
-  bool _isRecording = false;
+  final SpeechToText _speechToText = SpeechToText();
+  bool _speechEnabled = false;
+  String _lastWords = "";
+
+  Future<void> requestForPermission() async {
+    await Permission.microphone.request();
+  }
 
   @override
   void initState() {
     super.initState();
+    listenForPermissions();
     initDialogFlowtter();
+    _initSpeech();
+  }
+
+  Future<void> listenForPermissions() async {
+    final status = await Permission.microphone.status;
+    if (status != PermissionStatus.granted) {
+      await Permission.microphone.request();
+    }
+  }
+
+  Future<void> _initSpeech() async {
+    _speechEnabled = await _speechToText.initialize();
+    setState(() {}); // Call setState to update the UI
   }
 
   Future<void> initDialogFlowtter() async {
     DialogAuthCredentials credentials =
-        await DialogAuthCredentials.fromFile('here your path json');
+        await DialogAuthCredentials.fromFile('your path here');
     DialogFlowtter instance = DialogFlowtter(credentials: credentials);
     setState(() {
       dialogFlowtter = instance;
+    });
+  }
+
+  void _startListening() async {
+    await _speechToText.listen(onResult: _onSpeechResult);
+    setState(() {});
+  }
+
+  void _stopListening() async {
+    await _speechToText.stop();
+    setState(() {});
+  }
+
+  void _onSpeechResult(SpeechRecognitionResult result) {
+    if (result.finalResult) {
+      sendMessage(result.recognizedWords);
+    }
+  }
+
+  Future<void> sendMessage(String msg) async {
+    if (msg.isEmpty) {
+      if (kDebugMode) {
+        print("Message is Empty");
+      }
+      return;
+    }
+
+    addMessage(msg, true);
+
+    try {
+      DetectIntentResponse response = await dialogFlowtter.detectIntent(
+        queryInput: QueryInput(text: TextInput(text: msg)),
+      );
+
+      if (response.message?.text?.text != null) {
+        addMessage(response.message!.text!.text![0]);
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error sending message: $e');
+      }
+    }
+  }
+
+  void addMessage(String message, [bool isUserMessage = false]) {
+    setState(() {
+      messages.add({"message": message, "isUserMessage": isUserMessage});
     });
   }
 
@@ -35,7 +106,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Color.fromARGB(255, 232, 35, 35),
+        backgroundColor: const Color.fromARGB(255, 232, 35, 35),
         title: Row(
           mainAxisAlignment: MainAxisAlignment.start,
           children: [
@@ -79,7 +150,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       margin: const EdgeInsets.all(10),
       child: Row(
-        children: <Widget>[
+        children: [
           Flexible(
             child: TextField(
               controller: _controller,
@@ -98,6 +169,13 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
+          // Text(
+          //   _speechToText.isListening
+          //       ? _lastWords
+          //       : _speechEnabled
+          //           ? 'Tap the microphone to start listening...'
+          //           : 'Speech not available',
+          // ),
           IconButton(
             icon: const Icon(Icons.send, color: Colors.blueGrey),
             onPressed: () {
@@ -108,42 +186,16 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             iconSize: 30.0,
             icon: const Icon(Icons.mic_sharp, color: Colors.blueGrey),
-            onPressed: () {},
+            onPressed: () {
+              if (_speechToText.isNotListening) {
+                _startListening();
+              } else {
+                _stopListening();
+              }
+            },
           ),
         ],
       ),
     );
-  }
-
-  Future<void> sendMessage(String msg) async {
-    if (msg.isEmpty) {
-      if (kDebugMode) {
-        print("Message is Empty");
-      }
-      return;
-    }
-
-    addMessage(msg, true);
-
-    try {
-      DetectIntentResponse response = await dialogFlowtter.detectIntent(
-        queryInput: QueryInput(text: TextInput(text: msg)),
-      );
-
-      if (response.message?.text?.text != null) {
-        addMessage(response.message!.text!.text![0]);
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        print('Error sending message: $e');
-      }
-      // Handle the error or show an alert to the user
-    }
-  }
-
-  void addMessage(String message, [bool isUserMessage = false]) {
-    setState(() {
-      messages.add({"message": message, "isUserMessage": isUserMessage});
-    });
   }
 }
